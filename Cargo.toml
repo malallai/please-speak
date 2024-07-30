@@ -1,7 +1,7 @@
 [package]
-name = "eframe_template"
+name = "please_speak"
 version = "0.1.0"
-authors = ["Emil Ernerfeldt <emil.ernerfeldt@gmail.com>"]
+authors = ["Malo ALLAIN <malo@lacaleche.cc>"]
 edition = "2021"
 include = ["LICENSE-APACHE", "LICENSE-MIT", "**/*.rs", "Cargo.toml"]
 rust-version = "1.76"
@@ -22,6 +22,12 @@ log = "0.4"
 
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }
+wasm-bindgen-futures = "0.4.42"
+web-sys = "0.3.69"
+elevenlabs_rs = "0.3.1"
+tokio = "1.39.2"
+async-std = "1.12.0"
+async-channel = "1.9.0"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
