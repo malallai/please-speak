@@ -3,7 +3,6 @@
 
 use please_speak::TtsApp;
 
-// When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     env_logger::init();

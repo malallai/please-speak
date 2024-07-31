@@ -2,6 +2,8 @@
 
 mod app;
 mod elabs;
+mod errors;
 
 pub use app::TtsApp;
 pub use elabs::{Elabs, Voice};
+pub use errors::ErrorManager;

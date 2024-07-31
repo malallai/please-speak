@@ -1,5 +1,6 @@
+use std::future::Future;
 use async_channel::Sender;
-use elevenlabs_rs::ElevenLabsClient;
+use elevenlabs_rs::{Bytes, ElevenLabsClient, Model, TextToSpeech, TextToSpeechBody};
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
@@ -41,18 +42,33 @@ impl Elabs {
         Self {
             eleven_labs_client: None,
             connected: false,
-            api_error_tx, elabs_error_tx
+            api_error_tx,
+            elabs_error_tx,
         }
+    }
+
+    pub fn run_sync<'a, F, Fut>(&'a self, method: F) -> Fut::Output
+    where
+        F: FnOnce(&'a Elabs) -> Fut,
+        Fut: Future,
+    {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(method(self))
     }
 
     pub fn init(&mut self, api_key: String) {
         self.eleven_labs_client = Some(ElevenLabsClient::new(api_key));
-        if self.get_voices_sync(false).is_some() {
+        if self.run_sync(|elabs| {
+            elabs.get_voices(false)
+        }).is_some() {
             self.connected = true;
             return;
         }
 
-        self.sync_error("ElevenLabsClient not initialized, please set your API key on the settings page");
+        self.run_sync(|elabs| {
+            elabs.capture_error("ElevenLabsClient not initialized, please set your API key on the settings page")
+        });
+
         self.connected = false;
     }
 
@@ -60,17 +76,7 @@ impl Elabs {
         self.connected
     }
 
-    pub fn get_voices_sync(&self, raise: bool) -> Option<Vec<Voice>> {
-        let rt = Runtime::new().unwrap();
-        rt.block_on(self.get_voices(raise))
-    }
-
-    pub fn sync_error(&self, error: &str) {
-        let rt = Runtime::new().unwrap();
-        rt.block_on(self.async_error(error));
-    }
-
-    pub async fn async_error(&self, error: &str) {
+    pub async fn capture_error(&self, error: &str) {
         let _ = self.elabs_error_tx.send(error.to_string()).await;
     }
 
@@ -98,4 +104,25 @@ impl Elabs {
             None
         }
     }
+
+    pub async fn generate_speak(&self, text: String, voice: Voice, raise: bool) -> Option<Bytes> {
+        if let Some(client) = &self.eleven_labs_client {
+            let body = TextToSpeechBody::new(text.as_str(), Model::ElevenMultilingualV2);
+            let endpoint = TextToSpeech::new(voice.get_voice_id(), body);
+
+            match client.hit(endpoint).await {
+                Ok(bytes) => Some(bytes),
+                Err(e) => {
+                    if raise {
+                        let _ = self.api_error_tx.send(format!("API Error: {:?}", e)).await;
+                    }
+                    None
+                }
+            }
+        } else {
+            let _ = self.elabs_error_tx.send("ElevenLabsClient not initialized".to_string()).await;
+            None
+        }
+    }
+
 }
