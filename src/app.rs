@@ -1,12 +1,18 @@
-use std::fs;
+use std::{env, fs};
+use std::any::Any;
+use std::fs::File;
+use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use eframe::egui;
 use elevenlabs_rs::{Bytes};
 use elevenlabs_rs::utils::{play, save};
+use rodio::{Sink, cpal, Decoder, Device, DeviceTrait, OutputStream, Source};
+use rodio::cpal::traits::HostTrait;
 use serde::{Deserialize, Serialize};
 use crate::{Elabs, ErrorManager, Voice};
+use crate::device::PSDevice;
 
 pub const APP_KEY: &str = "please_speak";
 
@@ -31,15 +37,18 @@ pub struct TtsApp {
     generate_loading_rx: Receiver<Bytes>,
     generate_loading_tx: Sender<Bytes>,
     generate_loading: bool,
+
+    devices: Vec<PSDevice>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct Configuration {
     api_key: String,
     text: String,
     voice: Voice,
     save_to: String,
+    output_device: PSDevice,
 }
 
 impl Default for Configuration {
@@ -49,6 +58,7 @@ impl Default for Configuration {
             text: "Hello World!".to_owned(),
             voice: Voice::default(),
             save_to: "".to_owned(),
+            output_device: PSDevice::new(cpal::default_host().output_devices().unwrap().next().unwrap())
         }
     }
 }
@@ -85,7 +95,15 @@ impl TtsApp {
             generate_loading_rx,
             generate_loading_tx,
             generate_loading: false,
+
+            devices: Vec::new(),
         }
+    }
+
+    pub(crate) fn get_devices() -> Vec<Device> {
+        let host = cpal::default_host();
+        let devices = host.output_devices().unwrap();
+        devices.map(|d| d).collect()
     }
 
     pub fn init(&mut self) {
@@ -97,6 +115,11 @@ impl TtsApp {
 
         self.load_api_resources();
         self.security_checks();
+
+        let devices = Self::get_devices();
+        for device in devices {
+            self.devices.push(PSDevice::new(device));
+        }
     }
 
     pub fn load_api_resources(&mut self) {
@@ -241,8 +264,17 @@ impl eframe::App for TtsApp {
                             play(self.last_generated.as_ref().unwrap().clone());
                         }
 
-                        if ui.button("Send to Soundboard").clicked() {
+                        if ui.button("Play").clicked() {
+                            let device = self.configuration.output_device.get_device();
 
+                            let (_stream, stream_handle) = OutputStream::try_from_device(&device).unwrap();
+
+                            let file = BufReader::new(File::open(&self.last_generated_file_path).unwrap());
+                            let source = Decoder::new(file).unwrap();
+                            let sink = Sink::try_new(&stream_handle).unwrap();
+
+                            sink.append(source);
+                            sink.sleep_until_end();
                         }
 
                         if ui.button("Save").clicked() {
@@ -274,6 +306,17 @@ impl eframe::App for TtsApp {
                     ui.label("Save to:");
                     ui.text_edit_singleline(&mut self.configuration.save_to);
 
+                    ui.separator();
+
+                    ui.label("Output device:");
+                    egui::ComboBox::from_label("Select a device")
+                        .selected_text(format!("Device: {}", self.configuration.output_device.get_device_name()))
+                        .show_ui(ui, |ui| {
+                            for device in &self.devices {
+                                ui.selectable_value(&mut self.configuration.output_device, device.clone(), device.get_device_name());
+                            }
+                        });
+
                     if ui.button("Done").clicked() {
                         self.settings_modal = false;
                         self.elabs.init(self.configuration.api_key.clone());
@@ -296,7 +339,7 @@ impl eframe::App for TtsApp {
             self.last_generated = Some(bytes.clone());
 
             self.last_generated_file_name = format!("{}_{}.wav", self.configuration.voice.get_voice_name(), chrono::Local::now().format("%Y-%m-%d_%H-%M-%S-%3f"));
-            self.last_generated_file_path = format!("/tmp/{}", &self.last_generated_file_name);
+            self.last_generated_file_path = format!("{}/{}", env::temp_dir().display(), &self.last_generated_file_name);
             save(&self.last_generated_file_path, bytes).unwrap();
         }
     }
