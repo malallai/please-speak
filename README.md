@@ -9,6 +9,20 @@ The goal is for this to be the simplest way to get started writing a GUI app in 
 
 You can compile your app natively or for the web, and share it using Github Pages.
 
+## Quick start
+
+You need:
+- [Rust](https://www.rust-lang.org/tools/install)
+- [WixToolset V3](https://github.com/wixtoolset/wix3/releases/tag/wix3141rtm)
+
+```bash
+cargo install
+cargo install cargo-wix
+cargo wix
+```
+
+This will build the app and create an installer in `target\wix\please_speak-version-x86_64.msi`.
+
 ## Getting started
 
 Start by clicking "Use this template" at https://github.com/emilk/eframe_template/ or follow [these instructions](https://docs.github.com/en/free-pro-team@latest/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template).
